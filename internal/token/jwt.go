@@ -2,10 +2,12 @@ package token
 
 import (
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 	"github.com/ooizhenyi/SecureTokenService/internal/config"
 )
 
@@ -16,6 +18,7 @@ const (
 	RefreshToken      string = "refresh"
 	HMACSigningMethod string = "HS256"
 	RSASigningMethod  string = "RS256"
+	Issuer            string = "localhost:8080/auth"
 )
 
 type Claims struct {
@@ -65,3 +68,56 @@ func NewJwtService(config config.Config) (*JWTService, error) {
 
 	return service, nil
 }
+
+func generateTokenID() string {
+	return uuid.New().String()
+}
+
+func (j *JWTService) GenerateToken(userId string, roles []string) (string, error) {
+	now := time.Now()
+	claims := Claims{
+		UserID:    userId,
+		Roles:     roles,
+		TokenType: TokenType(AccessToken),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(j.accessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    Issuer,
+			Subject:   userId,
+			ID:        generateTokenID(),
+		},
+	}
+	token := jwt.NewWithClaims(j.signingMethod, claims)
+
+	var tokenString string
+	var err error
+	switch j.signingMethod {
+	case jwt.SigningMethodHS256:
+		if claims.TokenType == TokenType(AccessToken) {
+			tokenString, err = token.SignedString(j.accessKeySecret)
+			if err != nil {
+				return "", err
+			}
+		} else {
+			tokenString, err = token.SignedString(j.refreshKeySecret)
+			if err != nil {
+				return "", err
+			}
+		}
+	case jwt.SigningMethodRS256:
+		tokenString, err = token.SignedString(j.privateKey)
+		if err != nil {
+			return "", err
+		}
+	default:
+		return "", errors.New("unsupported signing method")
+	}
+
+	return tokenString, nil
+
+}
+
+//refresh token
+//revoke token
+//validate token
