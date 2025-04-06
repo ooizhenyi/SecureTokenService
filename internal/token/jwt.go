@@ -73,21 +73,7 @@ func generateTokenID() string {
 	return uuid.New().String()
 }
 
-func (j *JWTService) GenerateToken(userId string, roles []string) (string, error) {
-	now := time.Now()
-	claims := Claims{
-		UserID:    userId,
-		Roles:     roles,
-		TokenType: TokenType(AccessToken),
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(now.Add(j.accessTokenExpiry)),
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now),
-			Issuer:    Issuer,
-			Subject:   userId,
-			ID:        generateTokenID(),
-		},
-	}
+func (j *JWTService) generateToken(claims Claims) (string, error) {
 	token := jwt.NewWithClaims(j.signingMethod, claims)
 
 	var tokenString string
@@ -115,9 +101,57 @@ func (j *JWTService) GenerateToken(userId string, roles []string) (string, error
 	}
 
 	return tokenString, nil
-
 }
 
-//refresh token
-//revoke token
+func (j *JWTService) GenerateAccessToken(userId string, roles []string) (string, error) {
+	if userId == "" || len(roles) == 0 {
+		return "", errors.New("missing userId or roles")
+	}
+	now := time.Now()
+	claims := Claims{
+		UserID:    userId,
+		Roles:     roles,
+		TokenType: TokenType(AccessToken),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(j.accessTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    Issuer,
+			Subject:   userId,
+			ID:        generateTokenID(),
+		},
+	}
+	return j.generateToken(claims)
+}
+
+func (j *JWTService) GenerateRefreshToken(userId string) (string, error) {
+	if userId == "" {
+		return "", errors.New("missing User Id")
+	}
+
+	now := time.Now()
+	claims := Claims{
+		UserID:    userId,
+		TokenType: TokenType(RefreshToken),
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(now.Add(j.refreshTokenExpiry)),
+			IssuedAt:  jwt.NewNumericDate(now),
+			NotBefore: jwt.NewNumericDate(now),
+			Issuer:    Issuer,
+			Subject:   userId,
+			ID:        generateTokenID(),
+		},
+	}
+	return j.generateToken(claims)
+}
+
+func (j *JWTService) RevokeToken(tokenString string) {
+	j.tokenRevocationList[tokenString] = true
+}
+
+func (j *JWTService) IsTokenRevoked(tokenString string) bool {
+	return j.tokenRevocationList[tokenString]
+}
+
 //validate token
+//refresh Access token
